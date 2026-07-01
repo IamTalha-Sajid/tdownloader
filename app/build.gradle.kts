@@ -59,5 +59,6 @@ dependencies {
     implementation(libs.youtubedl.android.ffmpeg)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.material.icons)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     debugImplementation(libs.androidx.ui.tooling)
 }

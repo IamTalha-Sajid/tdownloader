@@ -136,24 +136,19 @@ private fun QualityPickerSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onSelect(quality) }
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text(quality.label, fontSize = 15.sp, color = ColorTextPrimary)
-                    if (quality.label == "Best") {
-                        Text(
-                            "recommended",
-                            fontSize = 11.sp,
-                            color = ColorPrimary,
-                        )
+                    Column {
+                        Text(quality.label, fontSize = 15.sp, color = ColorTextPrimary)
+                        when {
+                            quality.label == "Best" -> Text("highest available resolution", fontSize = 11.sp, color = ColorTextTertiary)
+                            quality.audioOnly -> Text("audio only · m4a", fontSize = 11.sp, color = ColorTextTertiary)
+                        }
                     }
-                    if (quality.audioOnly) {
-                        Text(
-                            "m4a",
-                            fontSize = 11.sp,
-                            color = ColorTextTertiary,
-                        )
+                    if (quality.label == "Best") {
+                        Text("recommended", fontSize = 11.sp, color = ColorPrimary)
                     }
                 }
                 if (quality != QUALITIES.last()) {

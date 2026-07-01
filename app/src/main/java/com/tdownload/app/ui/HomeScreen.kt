@@ -1,30 +1,42 @@
 package com.tdownload.app.ui
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material3.*
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -38,11 +50,13 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.tdownload.app.*
 import com.tdownload.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen() {
     val context = LocalContext.current
@@ -50,17 +64,33 @@ fun HomeScreen() {
     val cookiesExist = remember { mutableStateOf(File(context.filesDir, "cookies.txt").exists()) }
     val history by DownloadStore.historyFlow(context).collectAsState(initial = emptyList())
     var navIndex by remember { mutableIntStateOf(0) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             runCatching {
                 YtdlManager.ensureInit(context)
-                withContext(Dispatchers.Main) { initState = "Ready" }
+                withContext(Dispatchers.Main) { initState = "Updating…" }
                 YtdlManager.update(context)
+                withContext(Dispatchers.Main) { initState = "Ready" }
             }.onFailure {
                 withContext(Dispatchers.Main) { initState = "Error: ${it.message?.take(40)}" }
             }
         }
+    }
+
+    // Listen for download errors from DownloadService and show Snackbar
+    DisposableEffect(Unit) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                val msg = intent.getStringExtra(DownloadService.EXTRA_ERROR_MESSAGE) ?: return
+                scope.launch { snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Long) }
+            }
+        }
+        val filter = IntentFilter(DownloadService.ACTION_DOWNLOAD_ERROR)
+        context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        onDispose { context.unregisterReceiver(receiver) }
     }
 
     val lifecycle = LocalLifecycleOwner.current
@@ -73,9 +103,24 @@ fun HomeScreen() {
         onDispose { lifecycle.lifecycle.removeObserver(observer) }
     }
 
+    val isReady = initState == "Ready"
+
+    // Full-screen animated loader until yt-dlp is initialized
+    SplashLoader(statusText = initState, visible = !isReady)
+
     Scaffold(
         containerColor = ColorBackground,
         contentWindowInsets = WindowInsets(0),
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = ColorSurfaceVariant,
+                    contentColor = ColorTextPrimary,
+                    actionColor = ColorPrimary,
+                )
+            }
+        },
         bottomBar = {
             NavigationBar(
                 containerColor = ColorSurface,
@@ -91,7 +136,6 @@ fun HomeScreen() {
                     icon = Icons.Filled.History,
                     label = "History",
                     selected = navIndex == 1,
-                    badge = if (history.isNotEmpty()) history.size.toString() else null,
                     onClick = { navIndex = 1 },
                 )
             }
@@ -157,6 +201,7 @@ private fun RowScope.NavItem(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DownloadTab(
     modifier: Modifier,
@@ -164,8 +209,9 @@ private fun DownloadTab(
     cookiesExist: MutableState<Boolean>,
     context: Context,
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("Instagram", "YouTube", "TikTok")
+    val pagerState = rememberPagerState { tabs.size }
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier = modifier
@@ -173,7 +219,6 @@ private fun DownloadTab(
             .background(ColorBackground)
             .statusBarsPadding(),
     ) {
-        // Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -200,16 +245,15 @@ private fun DownloadTab(
             }
         }
 
-        // Tabs
         ScrollableTabRow(
-            selectedTabIndex = selectedTab,
+            selectedTabIndex = pagerState.currentPage,
             modifier = Modifier.padding(horizontal = 20.dp),
-            containerColor = ColorSurface,
+            containerColor = ColorBackground,
             contentColor = ColorPrimary,
             edgePadding = 0.dp,
             indicator = { tabPositions ->
                 TabRowDefaults.SecondaryIndicator(
-                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[pagerState.currentPage]),
                     color = ColorPrimary,
                 )
             },
@@ -217,14 +261,14 @@ private fun DownloadTab(
         ) {
             tabs.forEachIndexed { i, label ->
                 Tab(
-                    selected = selectedTab == i,
-                    onClick = { selectedTab = i },
+                    selected = pagerState.currentPage == i,
+                    onClick = { scope.launch { pagerState.animateScrollToPage(i) } },
                     text = {
                         Text(
                             label,
                             fontSize = 13.sp,
-                            fontWeight = if (selectedTab == i) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (selectedTab == i) ColorPrimary else ColorTextSecondary,
+                            fontWeight = if (pagerState.currentPage == i) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (pagerState.currentPage == i) ColorPrimary else ColorTextSecondary,
                         )
                     },
                 )
@@ -233,59 +277,67 @@ private fun DownloadTab(
 
         Spacer(Modifier.height(12.dp))
 
-        LazyColumn(
+        HorizontalPager(
+            state = pagerState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 0.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            when (selectedTab) {
-                0 -> {
-                    item {
-                        DownloadInputCard(
-                            placeholder = "Paste Instagram link…",
-                            onDownload = { url, quality -> startDownload(context, url, quality, "cookies.txt") },
-                        )
+        ) { page ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 0.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                when (page) {
+                    0 -> {
+                        item {
+                            DownloadInputCard(
+                                placeholder = "Paste Instagram link…",
+                                onDownload = { url, quality -> startDownload(context, url, quality, "cookies.txt") },
+                            )
+                        }
+                        item { InfoCard("Instagram requires login for all downloads — even public posts. Add your session ID below.") }
+                        item { InstagramLoginCard(context, cookiesExist) }
                     }
-                    item { InfoCard("Instagram requires login for all downloads — even public posts. Add your session ID below.") }
-                    item { InstagramLoginCard(context, cookiesExist) }
+                    1 -> {
+                        item {
+                            DownloadInputCard(
+                                placeholder = "Paste YouTube link…",
+                                onDownload = { url, quality -> startDownload(context, url, quality) },
+                            )
+                        }
+                    }
+                    2 -> {
+                        item {
+                            DownloadInputCard(
+                                placeholder = "Paste TikTok link…",
+                                onDownload = { url, quality -> startDownload(context, url, quality, "cookies_tiktok.txt") },
+                            )
+                        }
+                        item { InfoCard("Public videos work without login. Login only needed for private content.") }
+                        item {
+                            PlatformLoginCard(
+                                context = context,
+                                platform = "TikTok",
+                                cookiesFile = "cookies_tiktok.txt",
+                                cookiesExist = remember { mutableStateOf(File(context.filesDir, "cookies_tiktok.txt").exists()) },
+                            )
+                        }
+                    }
                 }
-                1 -> {
-                    item {
-                        DownloadInputCard(
-                            placeholder = "Paste YouTube link…",
-                            onDownload = { url, quality -> startDownload(context, url, quality) },
-                        )
-                    }
-                }
-                2 -> {
-                    item {
-                        DownloadInputCard(
-                            placeholder = "Paste TikTok link…",
-                            onDownload = { url, quality -> startDownload(context, url, quality, "cookies_tiktok.txt") },
-                        )
-                    }
-                    item { InfoCard("Public videos work without login. Login only needed for private content.") }
-                    item {
-                        PlatformLoginCard(
-                            context = context,
-                            platform = "TikTok",
-                            cookiesFile = "cookies_tiktok.txt",
-                            cookiesExist = remember { mutableStateOf(File(context.filesDir, "cookies_tiktok.txt").exists()) },
-                        )
-                    }
-                }
+                item { Spacer(Modifier.height(8.dp)) }
             }
-            item { Spacer(Modifier.height(8.dp)) }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HistoryTab(
     modifier: Modifier,
     history: List<DownloadRecord>,
     context: Context,
 ) {
+    val scope = rememberCoroutineScope()
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -301,15 +353,22 @@ private fun HistoryTab(
         )
         if (history.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No downloads yet", color = ColorTextTertiary, fontSize = 14.sp)
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(Icons.Outlined.Download, contentDescription = null, tint = ColorTextTertiary, modifier = Modifier.size(48.dp))
+                    Text("No downloads yet", color = ColorTextTertiary, fontSize = 14.sp)
+                }
             }
         } else {
             LazyColumn(
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 0.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(history) { record ->
-                    DownloadItem(record, context)
+                items(history, key = { it.id }) { record ->
+                    SwipeToDeleteItem(
+                        onDelete = { scope.launch { DownloadStore.delete(context, record.id) } }
+                    ) {
+                        DownloadItem(record, context)
+                    }
                 }
                 item { Spacer(Modifier.height(8.dp)) }
             }
@@ -317,6 +376,39 @@ private fun HistoryTab(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeToDeleteItem(onDelete: () -> Unit, content: @Composable () -> Unit) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) { onDelete(); true } else false
+        },
+        positionalThreshold = { it * 0.4f },
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            val color by animateColorAsState(
+                if (dismissState.dismissDirection == SwipeToDismissBoxValue.EndToStart) ColorError else Color.Transparent,
+                label = "swipe_bg",
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(color)
+                    .padding(end = 20.dp),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color.White)
+            }
+        },
+        content = { content() },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DownloadInputCard(
     placeholder: String,
@@ -325,6 +417,8 @@ private fun DownloadInputCard(
     var url by remember { mutableStateOf("") }
     var showQuality by remember { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
+    val clipboard = LocalClipboardManager.current
+    val haptic = LocalHapticFeedback.current
 
     SurfaceCard {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -334,13 +428,22 @@ private fun DownloadInputCard(
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text(placeholder, color = ColorTextTertiary, fontSize = 14.sp) },
                 singleLine = true,
+                trailingIcon = {
+                    if (url.isBlank()) {
+                        IconButton(onClick = {
+                            clipboard.getText()?.text?.takeIf { it.isNotBlank() }?.let { url = it }
+                        }) {
+                            Icon(Icons.Filled.ContentPaste, contentDescription = "Paste", tint = ColorTextTertiary)
+                        }
+                    }
+                },
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Uri,
                     imeAction = ImeAction.Go,
                 ),
                 keyboardActions = KeyboardActions(onGo = {
                     keyboard?.hide()
-                    if (url.isNotBlank()) showQuality = true
+                    if (url.isNotBlank()) { haptic.performHapticFeedback(HapticFeedbackType.LongPress); showQuality = true }
                 }),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = ColorPrimary,
@@ -350,7 +453,7 @@ private fun DownloadInputCard(
                 shape = RoundedCornerShape(10.dp),
             )
             Button(
-                onClick = { keyboard?.hide(); if (url.isNotBlank()) showQuality = true },
+                onClick = { keyboard?.hide(); if (url.isNotBlank()) { haptic.performHapticFeedback(HapticFeedbackType.LongPress); showQuality = true } },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(
@@ -365,7 +468,7 @@ private fun DownloadInputCard(
     }
 
     if (showQuality) {
-        InlineQualityPicker(
+        QualityPickerSheet(
             onSelect = { quality ->
                 showQuality = false
                 val trimmed = url.trim()
@@ -377,68 +480,97 @@ private fun DownloadInputCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InlineQualityPicker(onSelect: (Quality) -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
+private fun QualityPickerSheet(onSelect: (Quality) -> Unit, onDismiss: () -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         containerColor = ColorSurface,
-        title = { Text("Select Quality", color = ColorTextPrimary, fontWeight = FontWeight.SemiBold) },
-        text = {
-            Column {
-                QUALITIES.forEach { quality ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onSelect(quality) }
-                            .padding(vertical = 12.dp, horizontal = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
+        dragHandle = { BottomSheetDefaults.DragHandle(color = ColorOutline) },
+    ) {
+        Column(modifier = Modifier.navigationBarsPadding()) {
+            Text(
+                "Select Quality",
+                color = ColorTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+            Spacer(Modifier.height(8.dp))
+            QUALITIES.forEach { quality ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(quality) }
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column {
                         Text(quality.label, color = ColorTextPrimary, fontSize = 15.sp)
-                        Text(
-                            when {
-                                quality.label == "Best" -> "recommended"
-                                quality.audioOnly -> "m4a"
-                                else -> ""
-                            },
-                            color = if (quality.label == "Best") ColorPrimary else ColorTextTertiary,
-                            fontSize = 11.sp,
-                        )
+                        if (quality.label == "Best") {
+                            Text("highest available resolution", color = ColorTextTertiary, fontSize = 12.sp)
+                        } else if (quality.audioOnly) {
+                            Text("audio only · m4a", color = ColorTextTertiary, fontSize = 12.sp)
+                        }
                     }
-                    if (quality != QUALITIES.last()) HorizontalDivider(color = ColorOutline, thickness = 0.5.dp)
+                    if (quality.label == "Best") {
+                        Surface(
+                            color = ColorPrimary.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(4.dp),
+                        ) {
+                            Text("recommended", color = ColorPrimary, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                        }
+                    }
                 }
+                if (quality != QUALITIES.last()) HorizontalDivider(color = ColorOutline, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 20.dp))
             }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = ColorTextSecondary) } },
-    )
+            Spacer(Modifier.height(16.dp))
+        }
+    }
 }
 
 @Composable
 private fun InstagramLoginCard(context: Context, cookiesExist: MutableState<Boolean>) {
-    SurfaceCard {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column {
-                Text("Account", color = ColorTextSecondary, fontSize = 12.sp)
-                Text(
-                    if (cookiesExist.value) "Logged in ✓" else "Not logged in",
-                    color = if (cookiesExist.value) ColorSuccess else ColorTextTertiary,
-                    fontSize = 14.sp,
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (cookiesExist.value) {
-                    OutlinedButton(
+    if (cookiesExist.value) {
+        // Collapsed single-line when logged in
+        Surface(modifier = Modifier.fillMaxWidth(), color = ColorSurface, shape = RoundedCornerShape(12.dp)) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("Logged in ✓", color = ColorSuccess, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
                         onClick = { File(context.filesDir, "cookies.txt").delete(); cookiesExist.value = false },
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = ColorError),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, ColorError),
+                        colors = ButtonDefaults.textButtonColors(contentColor = ColorError),
                     ) { Text("Log out", fontSize = 12.sp) }
+                    TextButton(
+                        onClick = {
+                            context.startActivity(
+                                Intent(context, WebViewActivity::class.java)
+                                    .putExtra(WebViewActivity.EXTRA_PLATFORM, "Instagram")
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = ColorTextSecondary),
+                    ) { Text("Re-login", fontSize = 12.sp) }
+                }
+            }
+        }
+    } else {
+        SurfaceCard {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text("Account", color = ColorTextSecondary, fontSize = 12.sp)
+                    Text("Not logged in", color = ColorTextTertiary, fontSize = 14.sp)
                 }
                 Button(
                     onClick = {
@@ -450,7 +582,7 @@ private fun InstagramLoginCard(context: Context, cookiesExist: MutableState<Bool
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = ColorPrimary, contentColor = ColorOnPrimary),
                     shape = RoundedCornerShape(8.dp),
-                ) { Text(if (cookiesExist.value) "Re-login" else "Login", fontSize = 12.sp) }
+                ) { Text("Login", fontSize = 12.sp) }
             }
         }
     }
@@ -463,28 +595,43 @@ private fun PlatformLoginCard(
     cookiesFile: String,
     cookiesExist: MutableState<Boolean>,
 ) {
-    SurfaceCard {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column {
-                Text("Account", color = ColorTextSecondary, fontSize = 12.sp)
-                Text(
-                    if (cookiesExist.value) "Logged in ✓" else "Not logged in",
-                    color = if (cookiesExist.value) ColorSuccess else ColorTextTertiary,
-                    fontSize = 14.sp,
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (cookiesExist.value) {
-                    OutlinedButton(
+    if (cookiesExist.value) {
+        Surface(modifier = Modifier.fillMaxWidth(), color = ColorSurface, shape = RoundedCornerShape(12.dp)) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("Logged in ✓", color = ColorSuccess, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
                         onClick = { File(context.filesDir, cookiesFile).delete(); cookiesExist.value = false },
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = ColorError),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, ColorError),
+                        colors = ButtonDefaults.textButtonColors(contentColor = ColorError),
                     ) { Text("Log out", fontSize = 12.sp) }
+                    TextButton(
+                        onClick = {
+                            context.startActivity(
+                                Intent(context, WebViewActivity::class.java)
+                                    .putExtra(WebViewActivity.EXTRA_COOKIES_FILE, cookiesFile)
+                                    .putExtra(WebViewActivity.EXTRA_PLATFORM, platform)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = ColorTextSecondary),
+                    ) { Text("Re-login", fontSize = 12.sp) }
+                }
+            }
+        }
+    } else {
+        SurfaceCard {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text("Account", color = ColorTextSecondary, fontSize = 12.sp)
+                    Text("Not logged in", color = ColorTextTertiary, fontSize = 14.sp)
                 }
                 Button(
                     onClick = {
@@ -497,7 +644,7 @@ private fun PlatformLoginCard(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = ColorPrimary, contentColor = ColorOnPrimary),
                     shape = RoundedCornerShape(8.dp),
-                ) { Text(if (cookiesExist.value) "Re-login" else "Login", fontSize = 12.sp) }
+                ) { Text("Login", fontSize = 12.sp) }
             }
         }
     }
@@ -510,7 +657,15 @@ private fun InfoCard(message: String) {
         color = ColorSurfaceVariant,
         shape = RoundedCornerShape(10.dp),
     ) {
-        Text(message, color = ColorTextSecondary, fontSize = 13.sp, modifier = Modifier.padding(12.dp))
+        Row {
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .fillMaxHeight()
+                    .background(ColorPrimary, RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp))
+            )
+            Text(message, color = ColorTextSecondary, fontSize = 13.sp, modifier = Modifier.padding(12.dp))
+        }
     }
 }
 
@@ -550,12 +705,29 @@ private fun DownloadItem(record: DownloadRecord, context: Context) {
         shape = RoundedCornerShape(10.dp),
     ) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(record.title, color = ColorTextPrimary, fontSize = 14.sp, maxLines = 1)
-                Text(fmt.format(Date(record.timestamp)), color = ColorTextTertiary, fontSize = 11.sp)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(record.title, color = ColorTextPrimary, fontSize = 14.sp, maxLines = 2)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(fmt.format(Date(record.timestamp)), color = ColorTextTertiary, fontSize = 11.sp)
+                    if (record.platform.isNotBlank()) {
+                        Text("·", color = ColorTextTertiary, fontSize = 11.sp)
+                        Text(record.platform, color = ColorPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    }
+                    if (record.fileSizeBytes > 0) {
+                        Text("·", color = ColorTextTertiary, fontSize = 11.sp)
+                        Text(formatFileSize(record.fileSizeBytes), color = ColorTextTertiary, fontSize = 11.sp)
+                    }
+                }
             }
         }
     }
+}
+
+private fun formatFileSize(bytes: Long): String = when {
+    bytes >= 1_000_000_000L -> "%.1f GB".format(bytes / 1_000_000_000.0)
+    bytes >= 1_000_000L -> "%.1f MB".format(bytes / 1_000_000.0)
+    bytes >= 1_000L -> "%.0f KB".format(bytes / 1_000.0)
+    else -> "$bytes B"
 }
 
 fun startDownload(context: Context, url: String, quality: Quality, cookiesFile: String = "cookies.txt") {

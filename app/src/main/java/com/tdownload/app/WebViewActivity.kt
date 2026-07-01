@@ -8,6 +8,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -180,11 +181,18 @@ private fun WebViewLoginScreen(
 ) {
     var isLoading by remember { mutableStateOf(true) }
     var pageTitle by remember { mutableStateOf(platform) }
+    var currentUrl by remember { mutableStateOf("") }
+
+    // System back returns to session ID screen instead of exiting the activity
+    BackHandler { onBack() }
 
     val loginUrl = when (platform) {
         "TikTok" -> "https://www.tiktok.com/login"
         else     -> "https://www.instagram.com/accounts/login/"
     }
+
+    val isOnLoginPage = currentUrl.isBlank() || currentUrl.contains("/login", ignoreCase = true) ||
+        currentUrl.contains("/accounts/", ignoreCase = true)
 
     Column(modifier = Modifier.fillMaxSize()) {
         Surface(tonalElevation = 2.dp) {
@@ -204,6 +212,7 @@ private fun WebViewLoginScreen(
                     }
                     Button(
                         onClick = onSaveCookies,
+                        enabled = !isOnLoginPage,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = ColorPrimary,
                             contentColor = ColorOnPrimary,
@@ -227,8 +236,7 @@ private fun WebViewLoginScreen(
                     with(settings) {
                         javaScriptEnabled = true
                         domStorageEnabled = true
-                        databaseEnabled = true
-                        useWideViewPort = true
+useWideViewPort = true
                         loadWithOverviewMode = true
                         setSupportZoom(true)
                         builtInZoomControls = true
@@ -244,6 +252,7 @@ private fun WebViewLoginScreen(
                         }
                         override fun onPageFinished(view: WebView, url: String) {
                             pageTitle = view.title?.takeIf { it.isNotBlank() } ?: platform
+                            currentUrl = url
                             isLoading = false
                             view.evaluateJavascript(
                                 "Object.defineProperty(navigator,'webdriver',{get:()=>undefined});",

@@ -30,7 +30,16 @@ class DownloadService : Service() {
         const val EXTRA_AUDIO_ONLY = "audio_only"
         const val EXTRA_COOKIES_FILE = "cookies_file"
         const val CHANNEL_ID = "tdownload_channel"
+        const val ACTION_DOWNLOAD_ERROR = "com.tdownload.app.DOWNLOAD_ERROR"
+        const val EXTRA_ERROR_MESSAGE = "error_message"
         private val notifIdCounter = AtomicInteger(1000)
+
+        fun platformFromUrl(url: String) = when {
+            url.contains("instagram.com") || url.contains("instagr.am") -> "Instagram"
+            url.contains("youtube.com") || url.contains("youtu.be") -> "YouTube"
+            url.contains("tiktok.com") -> "TikTok"
+            else -> ""
+        }
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -151,9 +160,17 @@ class DownloadService : Service() {
                 MediaScannerConnection.scanFile(
                     applicationContext, arrayOf(finalPath), arrayOf("video/*"), null
                 )
+                val fileSize = File(finalPath).length()
                 DownloadStore.append(
                     applicationContext,
-                    DownloadRecord(lastTitle, finalPath, System.currentTimeMillis())
+                    DownloadRecord(
+                        id = UUID.randomUUID().toString(),
+                        title = lastTitle,
+                        path = finalPath,
+                        timestamp = System.currentTimeMillis(),
+                        platform = platformFromUrl(url),
+                        fileSizeBytes = fileSize,
+                    )
                 )
                 nm.notify(notifId, doneNotif(lastTitle, finalPath).build())
             } else {
@@ -170,6 +187,11 @@ class DownloadService : Service() {
                     "Network error — check your connection"
                 else -> msg.take(80).ifBlank { "Unknown error" }
             }
+            // Broadcast error so HomeScreen can show Snackbar if app is open
+            sendBroadcast(Intent(ACTION_DOWNLOAD_ERROR).apply {
+                putExtra(EXTRA_ERROR_MESSAGE, reason)
+                setPackage(packageName)
+            })
             showError(nm, notifId, reason)
         } finally {
             stopForeground(STOP_FOREGROUND_DETACH)
