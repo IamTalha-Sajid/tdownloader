@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="TDownloader-logo.png" width="180" alt="TDownloader Logo" />
+</p>
+
 # TDownloader
 
 A fast, minimal Android app for downloading videos from Instagram, YouTube, and TikTok — directly to your gallery. No ads, no accounts, no servers.
