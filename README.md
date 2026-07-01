@@ -121,6 +121,7 @@ The APK bundles a full Python runtime + FFmpeg so yt-dlp works with zero setup o
 | Python 3.8 runtime | ~80 MB |
 | FFmpeg | ~60 MB |
 | yt-dlp + app code | ~20 MB |
+| Native libs (arm, arm64, x86, x86_64) | ~40 MB |
 
 This is a one-time download. yt-dlp updates happen over the network at runtime (small delta, not a full APK update).
 
