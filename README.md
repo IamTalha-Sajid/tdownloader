@@ -4,7 +4,7 @@
 
 # TDownloader
 
-A fast, minimal Android app for downloading videos from Instagram, YouTube, and TikTok — directly to your gallery. No ads, no accounts, no servers.
+A fast, minimal Android app for downloading videos and images from Instagram, YouTube, and TikTok — directly to your gallery. No ads, no accounts, no servers.
 
 Share a link from any app → pick quality → done.
 
@@ -12,13 +12,14 @@ Share a link from any app → pick quality → done.
 
 ## Features
 
-- **Share sheet integration** — share any video link from Instagram, YouTube, or TikTok and TDownloader appears instantly
+- **Share sheet integration** — share any link from Instagram, YouTube, or TikTok and TDownloader appears instantly
+- **Instagram image & carousel support** — multi-image Instagram posts download in full, not just the first item
 - **Quality selector** — choose Best, 1080p, 720p, 480p, or Audio only before every download
-- **Live progress notification** — shows download speed, MB downloaded, and ETA in real time
+- **Live progress modal + notification** — a circular progress indicator with live percentage, plus a persistent notification showing speed, MB downloaded, and ETA; tap "Do it in background" anytime and the download keeps running
 - **In-app login** — built-in desktop browser for Instagram/TikTok authentication, no PC required
-- **Download history** — tap any past download to reopen the video
+- **Download history with thumbnails** — real previews for every past download, and files removed outside the app are automatically marked "Deleted"
 - **Auto-updating yt-dlp** — extractors update silently on every launch so platforms never break
-- **Dark UI** — yellow-accented dark theme, edge-to-edge
+- **Dark UI** — yellow-accented dark theme, edge-to-edge, with real platform icons on every tab
 
 <br>
 
@@ -27,8 +28,10 @@ Share a link from any app → pick quality → done.
 | Platform | Public Videos | Private / Login Required |
 |---|---|---|
 | YouTube | ✅ No login needed | — |
-| Instagram | ❌ Login required | ✅ via session ID |
+| Instagram | ❌ Login required | ✅ via session ID (videos, images, and carousels) |
 | TikTok | ✅ No login needed | ✅ via session ID |
+| WhatsApp Status Saver | 🚧 Coming soon | — |
+| Facebook | 🚧 Coming soon | — |
 
 <br>
 
@@ -43,7 +46,7 @@ Share a link from any app → pick quality → done.
 Get the latest APK from the [Releases](https://github.com/IamTalha-Sajid/tdownloader/releases) page.
 
 ### Install
-1. Download `app-release.apk`
+1. Download the latest `tdownloader-vX.Y.Z.apk`
 2. On your phone: **Settings → Apps → Special app access → Install unknown apps** → allow your browser or Files app
 3. Open the downloaded APK and tap **Install**
 
@@ -73,7 +76,7 @@ Instagram requires authentication for all downloads. TDownloader makes this easy
 |---|---|
 | Language | Kotlin |
 | UI | Jetpack Compose + Material 3 |
-| Downloader | [youtubedl-android](https://github.com/yausername/youtubedl-android) (yt-dlp + Python + FFmpeg bundled) |
+| Downloader | [youtubedl-android](https://github.com/yausername/youtubedl-android) (yt-dlp + Python + FFmpeg bundled), with [gallery-dl](https://github.com/mikf/gallery-dl) as a fallback for Instagram image/carousel posts |
 | Min SDK | Android 8.0 (API 26) |
 | Async | Kotlin Coroutines |
 | Storage | DataStore (download history) |
@@ -105,26 +108,26 @@ Build → Generate Signed Bundle / APK → APK → release
 
 ## How It Works
 
-TDownloader bundles Python 3.8, yt-dlp, and FFmpeg inside the APK — no external dependencies, no internet servers, everything runs on-device.
+TDownloader bundles Python, yt-dlp, gallery-dl, and FFmpeg inside the APK — no external dependencies, no internet servers, everything runs on-device.
 
 When you share a link:
 1. `ShareActivity` (translucent) extracts the URL and shows a quality picker
-2. `DownloadService` (foreground service) runs yt-dlp with your chosen format
-3. Progress is streamed to a persistent notification with speed + ETA
-4. On completion, the file is registered with MediaStore so it appears in your gallery instantly
-5. A tappable notification opens the video directly
+2. `DownloadService` (foreground service) runs yt-dlp with your chosen format. For Instagram posts with image slides — where yt-dlp's extractor can't handle mixed image/video carousels — it automatically falls back to gallery-dl
+3. Progress is streamed to both a persistent notification and an in-app progress modal, with speed + ETA
+4. On completion, every produced file is registered with MediaStore so it appears in your gallery instantly
+5. A tappable notification opens the file directly
 
 <br>
 
-## Why ~130 MB APK?
+## Why ~200 MB APK?
 
-The APK bundles a full Python runtime + FFmpeg so yt-dlp works with zero setup on the phone. Breakdown:
+The APK bundles a full Python runtime + FFmpeg + gallery-dl so yt-dlp works with zero setup on the phone, across every supported ABI. Breakdown:
 
 | Component | Size |
 |---|---|
-| Python 3.8 runtime | ~80 MB |
+| Python runtime | ~80 MB |
 | FFmpeg | ~60 MB |
-| yt-dlp + app code | ~20 MB |
+| yt-dlp + gallery-dl + app code | ~25 MB |
 | Native libs (arm, arm64, x86, x86_64) | ~40 MB |
 
 This is a one-time download. yt-dlp updates happen over the network at runtime (small delta, not a full APK update).
