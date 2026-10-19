@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.tdownload.app.ui.UpdateGate
 import com.tdownload.app.ui.theme.*
 
 data class Quality(val label: String, val format: String, val audioOnly: Boolean = false)
@@ -33,6 +34,17 @@ val QUALITIES = listOf(
     Quality("480p",   "bestvideo[ext=mp4][vcodec^=avc][height<=480]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best[height<=480]"),
     Quality("Audio",  "bestaudio[ext=m4a]/bestaudio", audioOnly = true),
 )
+
+// Facebook offers a plain muxed MP4 (hd/sd) next to DASH streams. Preferring it avoids "Best" picking
+// AV1 video that many phones and gallery apps can't play.
+private val MUXED_VIDEO = Quality("Video", "best[ext=mp4]/best")
+
+/** Only YouTube really offers resolution choices; the other sites have a single rendition. */
+fun qualitiesFor(url: String): List<Quality> = when (Site.detect(url)) {
+    Site.Instagram, Site.TikTok, Site.X -> listOf(QUALITIES.first().copy(label = "Video"), QUALITIES.last())
+    Site.Facebook -> listOf(MUXED_VIDEO, QUALITIES.last())
+    else -> QUALITIES
+}
 
 class ShareActivity : ComponentActivity() {
 
@@ -69,11 +81,13 @@ class ShareActivity : ComponentActivity() {
 
     private fun showQualityPicker(url: String) {
         setContent {
-            QualityPickerSheet(
-                url = url,
-                onSelect = { quality -> startDownload(url, quality) },
-                onDismiss = { finish() },
-            )
+            UpdateGate(showOptionalPrompt = false) {
+                QualityPickerSheet(
+                    url = url,
+                    onSelect = { quality -> startDownload(url, quality) },
+                    onDismiss = { finish() },
+                )
+            }
         }
     }
 
@@ -131,7 +145,8 @@ private fun QualityPickerSheet(
 
             HorizontalDivider(color = ColorOutline, thickness = 0.5.dp)
 
-            QUALITIES.forEach { quality ->
+            val options = qualitiesFor(url)
+            options.forEach { quality ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -147,11 +162,11 @@ private fun QualityPickerSheet(
                             quality.audioOnly -> Text("audio only · m4a", fontSize = 11.sp, color = ColorTextTertiary)
                         }
                     }
-                    if (quality.label == "Best") {
+                    if (quality.label == "Best" || quality.label == "Video") {
                         Text("recommended", fontSize = 11.sp, color = ColorPrimary)
                     }
                 }
-                if (quality != QUALITIES.last()) {
+                if (quality != options.last()) {
                     HorizontalDivider(
                         color = ColorOutline,
                         thickness = 0.5.dp,

@@ -28,23 +28,12 @@ class DownloadService : Service() {
         const val EXTRA_URL = "url"
         const val EXTRA_FORMAT = "format"
         const val EXTRA_AUDIO_ONLY = "audio_only"
-        const val EXTRA_COOKIES_FILE = "cookies_file"
+        /** Optional IntArray: indexes of the post's items to download (default: all). */
+        const val EXTRA_ITEMS = "items"
         const val CHANNEL_ID = "tdownload_channel"
-        const val ACTION_DOWNLOAD_ERROR = "com.tdownload.app.DOWNLOAD_ERROR"
-        const val EXTRA_ERROR_MESSAGE = "error_message"
-        const val ACTION_DOWNLOAD_PROGRESS = "com.tdownload.app.DOWNLOAD_PROGRESS"
-        const val EXTRA_PROGRESS_PERCENT = "progress_percent"
-        const val EXTRA_PROGRESS_TEXT = "progress_text"
-        const val ACTION_DOWNLOAD_COMPLETE = "com.tdownload.app.DOWNLOAD_COMPLETE"
-        const val EXTRA_COMPLETE_TITLE = "complete_title"
         private val notifIdCounter = AtomicInteger(1000)
 
-        fun platformFromUrl(url: String) = when {
-            url.contains("instagram.com") || url.contains("instagr.am") -> "Instagram"
-            url.contains("youtube.com") || url.contains("youtu.be") -> "YouTube"
-            url.contains("tiktok.com") -> "TikTok"
-            else -> ""
-        }
+        fun platformFromUrl(url: String) = Site.detect(url)?.label.orEmpty()
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -64,17 +53,25 @@ class DownloadService : Service() {
         val format = intent.getStringExtra(EXTRA_FORMAT)
             ?: "bestvideo[ext=mp4][vcodec^=avc]+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
         val audioOnly = intent.getBooleanExtra(EXTRA_AUDIO_ONLY, false)
-        val cookiesFileName = intent.getStringExtra(EXTRA_COOKIES_FILE) ?: "cookies.txt"
+        val items = intent.getIntArrayExtra(EXTRA_ITEMS)
         val notifId = notifIdCounter.getAndIncrement()
         startForeground(notifId, progressNotif("Starting…", progress = 0, indeterminate = true).build())
+        // A retired version must not download anything, whichever screen started this (app or share sheet).
+        if (UpdateChecker.isBlocked(this)) {
+            showError(getSystemService(NOTIFICATION_SERVICE) as NotificationManager, notifId, "This version is no longer supported — please update TDownloader")
+            stopForeground(STOP_FOREGROUND_DETACH)
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        DownloadTracker.start(notifId, Site.detect(url), url)
 
-        scope.launch { runDownload(url, format, audioOnly, cookiesFileName, notifId, startId) }
+        scope.launch { runDownload(url, format, audioOnly, items, notifId, startId) }
         return START_NOT_STICKY
     }
 
-    private suspend fun runDownload(url: String, format: String, audioOnly: Boolean, cookiesFileName: String, notifId: Int, startId: Int) {
+    private suspend fun runDownload(url: String, format: String, audioOnly: Boolean, items: IntArray?, notifId: Int, startId: Int) {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        val isInstagram = url.contains("instagram.com") || url.contains("instagr.am")
+        var isInstagram = InstagramFetcher.isInstagramUrl(url)
 
         try {
             YtdlManager.ensureInit(applicationContext)
@@ -84,13 +81,43 @@ class DownloadService : Service() {
                 "TDownload"
             ).apply { mkdirs() }
 
-            val cookiesFile = File(filesDir, cookiesFileName)
             val processId = UUID.randomUUID().toString()
 
             // %(playlist_index)s disambiguates carousel items (e.g. multi-image Instagram posts),
             // which otherwise all share the same caption-derived title and overwrite each other.
             // %(ext)s (not a hardcoded "mp4") keeps images as .jpg/.webp instead of mislabeling them.
-            val outTemplate = "${outDir.absolutePath}/%(title).80s%(playlist_index|)s.%(ext)s"
+            var outTemplate = "${outDir.absolutePath}/%(title).80s%(playlist_index|)s.%(ext)s"
+            var targetUrl = url
+            var ytFormat = format
+            var extraHeaders = emptyMap<String, String>()
+
+            val directFetch = Site.detect(url)?.resolver
+            if (directFetch != null) {
+                // Public posts resolve without a login. Videos/images/carousels are downloaded directly;
+                // audio-only is the one case that still needs yt-dlp's ffmpeg, so it extracts from the
+                // direct video URL instead. Anything we can't resolve falls through to yt-dlp.
+                DownloadTracker.progress(notifId, 0, "Fetching post…")
+                val resolved = directFetch(url)
+                // Honour an item selection from the UI; ignore it if it doesn't match what we resolved now.
+                val post = resolved?.let { r ->
+                    val chosen = r.items.filterIndexed { i, _ -> items == null || i in items }
+                    if (chosen.isEmpty()) r else r.copy(items = chosen)
+                }
+                post?.let { DownloadTracker.title(notifId, it.baseName) }
+                val video = post?.items?.firstOrNull { it.isVideo }
+                if (post != null && audioOnly && video != null) {
+                    targetUrl = video.url
+                    extraHeaders = video.headers
+                    outTemplate = "${outDir.absolutePath}/${post.baseName}.%(ext)s"
+                    // A direct URL has a single muxed format, which "bestaudio" (audio-only) can't select.
+                    ytFormat = "ba*/best"
+                    isInstagram = false // the rest of the pipeline now sees a plain direct media URL
+                } else if (post != null) {
+                    val files = downloadPost(post, outDir, nm, notifId)
+                    finishWithFiles(nm, notifId, url, files, if (files.size == 1) post.baseName else "${files.size} items")
+                    return
+                }
+            }
 
             // yt-dlp hard-errors ("No video formats found!") when a format selector's first
             // "/"-alternative is a bestvideo+bestaudio merge and the entry has no video-codec
@@ -98,10 +125,10 @@ class DownloadService : Service() {
             // merge alternatives for Instagram and keep only the plain best[...] fallbacks
             // (Instagram serves pre-muxed video anyway, so nothing is lost for real videos).
             val safeFormat = if (isInstagram) {
-                format.split("/").filterNot { it.contains("bestvideo") }.joinToString("/").ifBlank { "best" }
-            } else format
+                ytFormat.split("/").filterNot { it.contains("bestvideo") }.joinToString("/").ifBlank { "best" }
+            } else ytFormat
 
-            val req = YoutubeDLRequest(url).apply {
+            val req = YoutubeDLRequest(targetUrl).apply {
                 addOption("-o", outTemplate)
                 addOption("-f", safeFormat)
                 if (!audioOnly) addOption("--merge-output-format", "mp4")
@@ -122,12 +149,13 @@ class DownloadService : Service() {
                 addOption("--no-mtime")
                 addOption("--newline")
                 addOption("--add-header", "User-Agent:Mozilla/5.0 (Linux; Android 14; Pixel 9 Pro XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.82 Mobile Safari/537.36")
+                // Cookies/Referer a direct media URL needs (TikTok's CDN 403s without them).
+                extraHeaders.filterKeys { it != "User-Agent" }.forEach { (name, value) -> addOption("--add-header", "$name:$value") }
                 if (isInstagram && !url.contains("instagram.com/p/")) {
                     // The graphql API's carousel handling has a bug that hard-errors on some
                     // image slides in "/p/" posts, so only use it for single-video reels/tv.
                     addOption("--extractor-args", "instagram:api=graphql")
                 }
-                if (cookiesFile.exists()) addOption("--cookies", cookiesFile.absolutePath)
             }
 
             var lastTitle = ""
@@ -140,6 +168,7 @@ class DownloadService : Service() {
                     line.contains("[download] Destination:") -> {
                         val path = line.substringAfter("[download] Destination:").trim()
                         lastTitle = File(path).nameWithoutExtension
+                        DownloadTracker.title(notifId, lastTitle)
                     }
                     line.contains("[Merger] Merging formats into") || line.contains("[ExtractAudio] Destination:") -> {
                         val path = Regex("\"(.+)\"").find(line)?.groupValues?.get(1)
@@ -151,7 +180,7 @@ class DownloadService : Service() {
                             progress = 100,
                             indeterminate = true,
                         ).build())
-                        broadcastProgress(100, "Merging… $lastTitle")
+                        DownloadTracker.progress(notifId, 100, "Merging… $lastTitle")
                         return@execute
                     }
                     line.contains("[Merger]") || line.contains("[ffmpeg]") -> {
@@ -161,7 +190,7 @@ class DownloadService : Service() {
                             progress = 100,
                             indeterminate = true,
                         ).build())
-                        broadcastProgress(100, "Merging… $lastTitle")
+                        DownloadTracker.progress(notifId, 100, "Merging… $lastTitle")
                         return@execute
                     }
                 }
@@ -186,7 +215,7 @@ class DownloadService : Service() {
                     progress = pct,
                     indeterminate = pct == 0,
                 ).build())
-                broadcastProgress(pct, if (detail.isNotBlank()) detail else lastTitle)
+                DownloadTracker.progress(notifId, pct, if (detail.isNotBlank()) detail else lastTitle)
             }
             } catch (e: Exception) {
                 // With --ignore-errors (Instagram carousels), yt-dlp can still exit non-zero after
@@ -217,11 +246,10 @@ class DownloadService : Service() {
                 (hadError?.message?.contains("No video formats found", ignoreCase = true) == true)
             ) {
                 nm.notify(notifId, progressNotif("Fetching images…", progress = 0, indeterminate = true).build())
-                broadcastProgress(0, "Fetching images…")
+                DownloadTracker.progress(notifId, 0, "Fetching images…")
                 // --no-mtime: gallery-dl otherwise stamps files with the post's original
                 // publish date, which broke our download-time-based newFiles scan below.
                 val gdlArgs = mutableListOf("-D", outDir.absolutePath, "--no-input", "--no-mtime", "--http-timeout", "30")
-                if (cookiesFile.exists()) gdlArgs.addAll(listOf("-C", cookiesFile.absolutePath))
                 gdlArgs.add(url)
                 // gallery-dl prints one absolute file path per carousel item — freshly downloaded
                 // ones plain, already-on-disk ones prefixed "# " (skipped). Either way it's a real,
@@ -243,25 +271,7 @@ class DownloadService : Service() {
             }
 
             if (newFiles.isNotEmpty()) {
-                MediaScannerConnection.scanFile(
-                    applicationContext, newFiles.map { it.absolutePath }.toTypedArray(), null, null
-                )
-                for (f in newFiles) {
-                    DownloadStore.append(
-                        applicationContext,
-                        DownloadRecord(
-                            id = UUID.randomUUID().toString(),
-                            title = f.nameWithoutExtension,
-                            path = f.absolutePath,
-                            timestamp = System.currentTimeMillis(),
-                            platform = platformFromUrl(url),
-                            fileSizeBytes = f.length(),
-                        )
-                    )
-                }
-                val doneTitle = if (newFiles.size == 1) lastTitle else "${newFiles.size} items"
-                nm.notify(notifId, doneNotif(doneTitle, newFiles.last().absolutePath).build())
-                broadcastComplete(doneTitle)
+                finishWithFiles(nm, notifId, url, newFiles, if (newFiles.size == 1) lastTitle else "${newFiles.size} items")
             } else if (hadError != null) {
                 throw hadError!!
             } else {
@@ -271,11 +281,15 @@ class DownloadService : Service() {
             val msg = e.message ?: ""
             val reason = when {
                 isInstagram && (msg.contains("empty", ignoreCase = true) || msg.contains("login", ignoreCase = true) || msg.contains("logged", ignoreCase = true)) ->
-                    "Instagram requires login — add session ID in TDownloader"
+                    "Couldn't fetch this Instagram post — it may be private or removed"
                 msg.contains("private", ignoreCase = true) ->
-                    "Private content — login required"
+                    "Private content can't be downloaded"
                 msg.contains("network", ignoreCase = true) || msg.contains("Unable to connect", ignoreCase = true) ->
                     "Network error — check your connection"
+                Site.detect(url) == Site.X ->
+                    "Couldn't find photos or video in this X post — it may be private, deleted, or text-only"
+                Site.detect(url).let { it == Site.TikTok || it == Site.Facebook } ->
+                    "Couldn't fetch this ${Site.detect(url)?.label} video — it may be private, removed, or unavailable in your region"
                 else -> msg.take(80).ifBlank { "Unknown error" }
             }
             showError(nm, notifId, reason)
@@ -283,6 +297,56 @@ class DownloadService : Service() {
             stopForeground(STOP_FOREGROUND_DETACH)
             stopSelf(startId)
         }
+    }
+
+    /** Downloads every item of a resolved post, returning the saved files in post order. */
+    private fun downloadPost(
+        post: DirectPost, outDir: File, nm: NotificationManager, notifId: Int,
+    ): List<File> {
+        val count = post.items.size
+        return post.items.mapIndexed { i, media ->
+            val stem = if (count > 1) "${post.baseName} ${i + 1}" else post.baseName
+            var dest = File(outDir, "$stem.${media.extension}")
+            // Don't clobber a different earlier download that happens to share a caption.
+            if (dest.exists()) dest = File(outDir, "$stem [${post.id}].${media.extension}")
+            DirectHttp.download(media, dest) { done, total ->
+                val fraction = if (total > 0) done.toFloat() / total else 0f
+                val pct = (((i + fraction) / count) * 100).toInt().coerceIn(0, 100)
+                val detail = buildString {
+                    if (count > 1) append("${i + 1} of $count · ")
+                    append(formatSize(done))
+                    if (total > 0) append(" / ${formatSize(total)}")
+                }
+                nm.notify(notifId, progressNotif("Downloading $pct%", detail, pct, indeterminate = false).build())
+                DownloadTracker.progress(notifId, pct, detail)
+            }
+            dest
+        }
+    }
+
+    private fun formatSize(bytes: Long): String = when {
+        bytes >= 1_000_000L -> "%.1f MB".format(bytes / 1_000_000.0)
+        bytes >= 1_000L -> "%.0f KB".format(bytes / 1_000.0)
+        else -> "$bytes B"
+    }
+
+    private suspend fun finishWithFiles(nm: NotificationManager, notifId: Int, url: String, files: List<File>, title: String) {
+        MediaScannerConnection.scanFile(applicationContext, files.map { it.absolutePath }.toTypedArray(), null, null)
+        for (f in files) {
+            DownloadStore.append(
+                applicationContext,
+                DownloadRecord(
+                    id = UUID.randomUUID().toString(),
+                    title = f.nameWithoutExtension,
+                    path = f.absolutePath,
+                    timestamp = System.currentTimeMillis(),
+                    platform = platformFromUrl(url),
+                    fileSizeBytes = f.length(),
+                )
+            )
+        }
+        nm.notify(notifId, doneNotif(title, files.last().absolutePath).build())
+        DownloadTracker.done(notifId, title)
     }
 
     private fun progressNotif(title: String, subText: String = "", progress: Int, indeterminate: Boolean) =
@@ -295,21 +359,6 @@ class DownloadService : Service() {
             .setOngoing(true)
             .setSilent(true)
             .setOnlyAlertOnce(true)
-
-    private fun broadcastProgress(percent: Int, text: String) {
-        sendBroadcast(Intent(ACTION_DOWNLOAD_PROGRESS).apply {
-            putExtra(EXTRA_PROGRESS_PERCENT, percent)
-            putExtra(EXTRA_PROGRESS_TEXT, text)
-            setPackage(packageName)
-        })
-    }
-
-    private fun broadcastComplete(title: String) {
-        sendBroadcast(Intent(ACTION_DOWNLOAD_COMPLETE).apply {
-            putExtra(EXTRA_COMPLETE_TITLE, title)
-            setPackage(packageName)
-        })
-    }
 
     private data class ProgressInfo(val speed: String, val downloaded: String, val total: String)
 
@@ -354,12 +403,7 @@ class DownloadService : Service() {
                 .setAutoCancel(true)
                 .build()
         )
-        // The in-app progress modal only has a terminal state (Done/Error) via this broadcast —
-        // every failure path must send it, or the modal is stuck showing progress forever.
-        sendBroadcast(Intent(ACTION_DOWNLOAD_ERROR).apply {
-            putExtra(EXTRA_ERROR_MESSAGE, reason)
-            setPackage(packageName)
-        })
+        DownloadTracker.fail(notifId, reason)
     }
 
     private fun buildOpenIntent(path: String): PendingIntent {
@@ -369,8 +413,13 @@ class DownloadService : Service() {
         } catch (_: Exception) {
             Uri.fromFile(file)
         }
+        val mime = when (file.extension.lowercase()) {
+            "jpg", "jpeg", "png", "webp", "heic" -> "image/*"
+            "m4a", "mp3" -> "audio/*"
+            else -> "video/*"
+        }
         val viewIntent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "video/*")
+            setDataAndType(uri, mime)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         return PendingIntent.getActivity(
