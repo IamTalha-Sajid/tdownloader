@@ -12,8 +12,8 @@ android {
         applicationId = "com.tdownload.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.2.0"
+        versionCode = 3
+        versionName = "1.3.0"
 
         ndk {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
