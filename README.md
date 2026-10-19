@@ -12,16 +12,14 @@ Paste or share a link from any app → TDownloader recognises the site → downl
 
 ## Features
 
-- **One smart home screen** — no tabs to pick: paste a link and TDownloader detects the site, shows a preview, and offers only the options that apply
-- **Share sheet integration** — share any link from Instagram, YouTube, TikTok, X, or Facebook and TDownloader appears instantly
-- **Carousel previews** — see every photo or video of an Instagram, TikTok, or X post before downloading and untick the ones you don't want
-- **Quality and audio options** — YouTube offers Best, 1080p, 720p, 480p, or Audio only; other sites offer Video or Audio
-- **Inline progress + notification** — every running download shows as a live card on the home screen (start another while one runs), plus a persistent notification with speed, MB downloaded, and ETA
-- **No logins** — public Instagram, TikTok, X, and Facebook posts download straight from a link, no account or session ID needed
-- **WhatsApp Status Saver** — a dedicated Status tab shows the statuses you've viewed in WhatsApp (or WhatsApp Business); preview them, select several, and save to your Library. One-time folder access, nothing leaves your phone
-- **Library with search and filters** — real thumbnails for every past download, filter by Video / Audio / Photos or by site, and files removed outside the app are automatically marked "Deleted"
-- **Auto-updating yt-dlp** — extractors update silently on every launch so platforms never break
-- **Dark UI** — yellow-accented dark theme, edge-to-edge, with real platform icons
+- **Paste or share a link** — TDownloader spots the site and does the rest
+- **No logins** — public posts from Instagram, TikTok, X, and Facebook just work, and so does YouTube
+- **Video, photos, GIFs, or just the audio** — save whatever you want from a post
+- **Pick what to keep** — preview multi-photo posts and untick anything you don't want
+- **WhatsApp Status Saver** — save the statuses you've viewed, with a one-time folder permission
+- **Live progress** — watch your downloads, and start another while one is running
+- **Library** — search and filter everything you've saved
+- **Update alerts** — if an old version stops working, the app tells you to update
 
 <br>
 
@@ -64,93 +62,9 @@ Statuses have no link to paste, so they live in their own **Status** tab:
 
 <br>
 
-## Instagram
+## Why is the app ~200 MB?
 
-No login or setup. Paste (or share) a public Instagram link and TDownloader reads the post's media directly. Reels, videos, photos and multi-item carousels all work. Private accounts can't be downloaded.
-
-<br>
-
-## Retiring old versions
-
-The app reads [`update.json`](update.json) from this repo's `main` branch each time it opens:
-
-```json
-{
-  "latest": "1.3.0",
-  "minimum": "1.3.0",
-  "url": "https://github.com/IamTalha-Sajid/tdownloader/releases/latest",
-  "message": "Optional text shown to users."
-}
-```
-
-- Installed version **below `minimum`** → the app is replaced by a full-screen "Update required" screen and refuses all downloads (including from the share sheet).
-- Installed version **below `latest`** (but not below `minimum`) → a dismissible "Update available" prompt.
-- If the file is unreachable, malformed, or the versions aren't valid numbers, **nothing is blocked**. The last answer is cached, so a retired version stays blocked offline.
-- Only versions that include this check (1.3.0 and newer) can be retired this way. Raise `minimum` when a site change breaks downloads in an old release, and edit the file on `main`.
-
-<br>
-
-## Tech Stack
-
-| Concern | Choice |
-|---|---|
-| Language | Kotlin |
-| UI | Jetpack Compose + Material 3 |
-| Downloader | [youtubedl-android](https://github.com/yausername/youtubedl-android) (yt-dlp + Python + FFmpeg bundled), with [gallery-dl](https://github.com/mikf/gallery-dl) as a fallback for Instagram image/carousel posts |
-| Min SDK | Android 8.0 (API 26) |
-| Async | Kotlin Coroutines |
-| Storage | DataStore (download history) |
-
-<br>
-
-## Building from Source
-
-### Prerequisites
-- Android Studio Hedgehog or newer
-- JDK 11+
-- Android SDK with API 35
-
-### Steps
-
-```bash
-git clone https://github.com/IamTalha-Sajid/tdownloader.git
-cd tdownloader
-```
-
-Open the project in Android Studio → let Gradle sync → hit **Run**.
-
-To build a release APK:
-```
-Build → Generate Signed Bundle / APK → APK → release
-```
-
-<br>
-
-## How It Works
-
-TDownloader bundles Python, yt-dlp, gallery-dl, and FFmpeg inside the APK — no external dependencies, no internet servers, everything runs on-device.
-
-When you share a link:
-1. `ShareActivity` (translucent) extracts the URL and shows a quality picker
-2. `DownloadService` (foreground service) runs yt-dlp with your chosen format. Instagram, TikTok, and X links are resolved without a login by reading the post's public page data and downloading the media directly (audio-only extracts the soundtrack with yt-dlp's bundled ffmpeg). If a post can't be resolved that way, it falls back to yt-dlp, then gallery-dl for mixed image/video Instagram carousels. YouTube and Facebook go straight to yt-dlp
-3. Progress is streamed to both a persistent notification and an in-app progress modal, with speed + ETA
-4. On completion, every produced file is registered with MediaStore so it appears in your gallery instantly
-5. A tappable notification opens the file directly
-
-<br>
-
-## Why ~200 MB APK?
-
-The APK bundles a full Python runtime + FFmpeg + gallery-dl so yt-dlp works with zero setup on the phone, across every supported ABI. Breakdown:
-
-| Component | Size |
-|---|---|
-| Python runtime | ~80 MB |
-| FFmpeg | ~60 MB |
-| yt-dlp + gallery-dl + app code | ~25 MB |
-| Native libs (arm, arm64, x86, x86_64) | ~40 MB |
-
-This is a one-time download. yt-dlp updates happen over the network at runtime (small delta, not a full APK update).
+TDownloader carries its own download engine inside the app, so everything runs on your phone — no accounts, no servers, nothing to set up. That makes the first download large, but it's a one-time cost. The engine keeps itself up to date in the background with small updates.
 
 <br>
 
