@@ -18,8 +18,8 @@ Paste or share a link from any app → TDownloader recognises the site → downl
 - **Pick what to keep** — preview multi-photo posts and untick anything you don't want
 - **WhatsApp Status Saver** — save the statuses you've viewed, with a one-time folder permission
 - **Live progress** — watch your downloads, and start another while one is running
-- **Library** — search and filter everything you've saved
-- **Update alerts** — if an old version stops working, the app tells you to update
+- **Downloads** — search and filter everything you've saved
+- **Always up to date** — an outdated version asks you to update before it downloads anything
 
 <br>
 
@@ -58,7 +58,7 @@ Get the latest APK from the [Releases](https://github.com/IamTalha-Sajid/tdownlo
 Statuses have no link to paste, so they live in their own **Status** tab:
 1. Open WhatsApp and view the statuses you want to keep (WhatsApp only stores a status on your phone once you've seen it).
 2. Open TDownloader → **Status** → **Allow access**. Android opens the Statuses folder for you — tap **Use this folder**. This is a one-time step and only shares that folder.
-3. Tap a status to preview it, or long-press to select several, then **Download**. Saved statuses go to `Downloads/TDownload` and appear in your Library.
+3. Tap a status to preview it, or long-press to select several, then **Download**. Saved statuses go to `Downloads/TDownload` and appear in your Downloads tab.
 
 <br>
 
