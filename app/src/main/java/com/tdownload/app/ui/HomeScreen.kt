@@ -16,7 +16,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -101,7 +100,9 @@ private fun HomeContent() {
                     NavItem("Status", selected = navIndex == 1, icon = {
                         Icon(painterResource(com.tdownload.app.R.drawable.ic_whatsapp), contentDescription = "WhatsApp Status", modifier = Modifier.size(24.dp))
                     }) { navIndex = 1 }
-                    NavItem("Library", selected = navIndex == 2, icon = { Icon(Icons.Filled.VideoLibrary, contentDescription = "Library") }) { navIndex = 2 }
+                    NavItem("Downloads", selected = navIndex == 2, icon = {
+                        Icon(painterResource(com.tdownload.app.R.drawable.ic_stat_tdownloader), contentDescription = "Downloads", modifier = Modifier.size(24.dp))
+                    }) { navIndex = 2 }
                 }
             }
         ) { padding ->
@@ -214,7 +215,7 @@ private fun LibraryTab(
             .statusBarsPadding(),
     ) {
         Text(
-            "Library",
+            "Downloads",
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
             color = ColorTextPrimary,

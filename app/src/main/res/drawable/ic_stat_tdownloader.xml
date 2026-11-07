@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Notification icon: Android tints it, keep it white/solid -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="100" android:viewportHeight="100">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M43,12H57V44H43Z M29,42L71,42L50,64Z"/>
+        <path android:strokeColor="#FFFFFFFF" android:strokeWidth="11" android:fillColor="#00000000" android:pathData="M19,56 V81 H81 V56"/>
+</vector>

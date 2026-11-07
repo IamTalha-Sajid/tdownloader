@@ -3,15 +3,12 @@ package com.tdownload.app
 import org.json.JSONObject
 
 /** What the maintainer's `update.json` says. */
-data class UpdateInfo(val latest: String, val minimum: String, val url: String, val message: String)
+data class UpdateInfo(val latest: String, val url: String, val message: String)
 
 sealed interface UpdateStatus {
     data object UpToDate : UpdateStatus
 
-    /** A newer version exists, but this one still works. */
-    data class Available(val info: UpdateInfo) : UpdateStatus
-
-    /** This version has been retired: the app must not be used until it is updated. */
+    /** A newer version exists: this one is outdated and the app must not be used until it is updated. */
     data class Required(val info: UpdateInfo) : UpdateStatus
 }
 
@@ -37,24 +34,19 @@ internal object UpdateRules {
         return 0
     }
 
-    /** Both `latest` and `minimum` must be valid versions, otherwise the whole file is ignored. */
+    /** `latest` must be a valid version, otherwise the whole file is ignored. */
     fun parse(json: String): UpdateInfo? = runCatching {
         val o = JSONObject(json)
         val latest = o.optString("latest")
-        val minimum = o.optString("minimum")
-        if (versionParts(latest) == null || versionParts(minimum) == null) return null
-        UpdateInfo(latest, minimum, o.optString("url").ifBlank { DEFAULT_URL }, o.optString("message"))
+        if (versionParts(latest) == null) return null
+        UpdateInfo(latest, o.optString("url").ifBlank { DEFAULT_URL }, o.optString("message"))
     }.getOrNull()
 
+    /** Anything older than `latest` is outdated and blocked. */
     fun evaluate(installed: String, info: UpdateInfo?): UpdateStatus {
         val current = versionParts(installed) ?: return UpdateStatus.UpToDate
         info ?: return UpdateStatus.UpToDate
-        val minimum = versionParts(info.minimum) ?: return UpdateStatus.UpToDate
         val latest = versionParts(info.latest) ?: return UpdateStatus.UpToDate
-        return when {
-            compare(current, minimum) < 0 -> UpdateStatus.Required(info)
-            compare(current, latest) < 0 -> UpdateStatus.Available(info)
-            else -> UpdateStatus.UpToDate
-        }
+        return if (compare(current, latest) < 0) UpdateStatus.Required(info) else UpdateStatus.UpToDate
     }
 }

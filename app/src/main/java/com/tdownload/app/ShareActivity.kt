@@ -81,7 +81,7 @@ class ShareActivity : ComponentActivity() {
 
     private fun showQualityPicker(url: String) {
         setContent {
-            UpdateGate(showOptionalPrompt = false) {
+            UpdateGate {
                 QualityPickerSheet(
                     url = url,
                     onSelect = { quality -> startDownload(url, quality) },

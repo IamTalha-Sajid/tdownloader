@@ -30,7 +30,9 @@ class DownloadService : Service() {
         const val EXTRA_AUDIO_ONLY = "audio_only"
         /** Optional IntArray: indexes of the post's items to download (default: all). */
         const val EXTRA_ITEMS = "items"
-        const val CHANNEL_ID = "tdownload_channel"
+        // v2: the old channel was IMPORTANCE_LOW, which hides the status-bar icon; importance can't be raised in place.
+        const val CHANNEL_ID = "tdownload_channel_v2"
+        private const val LEGACY_CHANNEL_ID = "tdownload_channel"
         private val notifIdCounter = AtomicInteger(1000)
 
         fun platformFromUrl(url: String) = Site.detect(url)?.label.orEmpty()
@@ -277,7 +279,7 @@ class DownloadService : Service() {
             } else {
                 showError(nm, notifId, "Saved (path unknown)")
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             val msg = e.message ?: ""
             val reason = when {
                 isInstagram && (msg.contains("empty", ignoreCase = true) || msg.contains("login", ignoreCase = true) || msg.contains("logged", ignoreCase = true)) ->
@@ -351,7 +353,7 @@ class DownloadService : Service() {
 
     private fun progressNotif(title: String, subText: String = "", progress: Int, indeterminate: Boolean) =
         NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setSmallIcon(R.drawable.ic_stat_tdownloader)
             .setContentTitle(title)
             .setContentText(subText)
             .setColor(0xFFFFD60A.toInt())
@@ -382,7 +384,7 @@ class DownloadService : Service() {
 
     private fun doneNotif(title: String, path: String) =
         NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setSmallIcon(R.drawable.ic_stat_tdownloader)
             .setContentTitle("Saved ✓")
             .setContentText(title)
             .setColor(0xFF34D399.toInt())
@@ -395,7 +397,7 @@ class DownloadService : Service() {
         nm.notify(
             notifId,
             NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.stat_notify_error)
+                .setSmallIcon(R.drawable.ic_stat_tdownloader)
                 .setContentTitle("Failed")
                 .setContentText(reason)
                 .setColor(0xFFF87171.toInt())
@@ -432,14 +434,16 @@ class DownloadService : Service() {
         val channel = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.notification_channel_name),
-            NotificationManager.IMPORTANCE_LOW
+            NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
             description = getString(R.string.notification_channel_desc)
+            setSound(null, null)
             enableLights(false)
             enableVibration(false)
         }
-        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
-            .createNotificationChannel(channel)
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        nm.deleteNotificationChannel(LEGACY_CHANNEL_ID)
+        nm.createNotificationChannel(channel)
     }
 
     override fun onDestroy() {
