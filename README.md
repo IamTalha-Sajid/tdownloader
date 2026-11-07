@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="TDownloader-logo.png" width="180" alt="TDownloader Logo" />
+  <img src="TDownloader-banner.png" width="640" alt="TDownloader" />
 </p>
 
 # TDownloader
