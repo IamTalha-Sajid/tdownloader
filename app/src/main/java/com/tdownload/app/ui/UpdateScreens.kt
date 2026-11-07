@@ -23,36 +23,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Wraps the app's UI. If this version has been retired it shows [ForceUpdateScreen] instead of
- * [content], so nothing in the app can be used; if only a newer version exists it offers a dismissible
- * prompt. The cached answer applies instantly; the network refresh updates it a moment later.
+ * Wraps the app's UI. If a newer version than this one exists it shows [ForceUpdateScreen] instead of
+ * [content], so nothing in the app can be used until it is updated. The cached answer applies instantly;
+ * the network refresh updates it a moment later.
  */
 @Composable
-fun UpdateGate(showOptionalPrompt: Boolean = true, content: @Composable () -> Unit) {
+fun UpdateGate(content: @Composable () -> Unit) {
     val context = LocalContext.current
     var status by remember { mutableStateOf(UpdateChecker.cachedStatus(context)) }
     LaunchedEffect(Unit) { status = withContext(Dispatchers.IO) { UpdateChecker.refresh(context) } }
 
     when (val current = status) {
         is UpdateStatus.Required -> ForceUpdateScreen(current.info, UpdateChecker.currentVersion(context))
-        else -> {
-            content()
-            if (showOptionalPrompt && current is UpdateStatus.Available) {
-                var dismissed by remember(current.info.latest) {
-                    mutableStateOf(UpdateChecker.dismissedLatest(context) == current.info.latest)
-                }
-                if (!dismissed) {
-                    UpdateAvailableDialog(
-                        info = current.info,
-                        installed = UpdateChecker.currentVersion(context),
-                        onLater = {
-                            UpdateChecker.dismiss(context, current.info.latest)
-                            dismissed = true
-                        },
-                    )
-                }
-            }
-        }
+        else -> content()
     }
 }
 
@@ -81,7 +64,7 @@ private fun ForceUpdateScreen(info: UpdateInfo, installed: String) {
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(8.dp))
-        Text("Installed $installed · required ${info.minimum} or newer", color = ColorTextTertiary, fontSize = 12.sp)
+        Text("Installed $installed · latest ${info.latest}", color = ColorTextTertiary, fontSize = 12.sp)
         Spacer(Modifier.height(28.dp))
         Button(
             onClick = { runCatching { uriHandler.openUri(info.url) } },
@@ -90,32 +73,6 @@ private fun ForceUpdateScreen(info: UpdateInfo, installed: String) {
             colors = ButtonDefaults.buttonColors(containerColor = ColorPrimary, contentColor = ColorOnPrimary),
         ) { Text("Update now", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
         Spacer(Modifier.height(12.dp))
-        Text("Your downloads and library stay on your phone.", color = ColorTextTertiary, fontSize = 12.sp)
+        Text("Your downloads stay on your phone.", color = ColorTextTertiary, fontSize = 12.sp)
     }
-}
-
-@Composable
-private fun UpdateAvailableDialog(info: UpdateInfo, installed: String, onLater: () -> Unit) {
-    val uriHandler = LocalUriHandler.current
-    AlertDialog(
-        onDismissRequest = onLater,
-        containerColor = ColorSurface,
-        title = { Text("Update available", color = ColorTextPrimary, fontWeight = FontWeight.SemiBold) },
-        text = {
-            Text(
-                buildString {
-                    append("Version ${info.latest} is out — you're on $installed.")
-                    if (info.message.isNotBlank()) append("\n\n${info.message}")
-                },
-                color = ColorTextSecondary,
-                fontSize = 14.sp,
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { runCatching { uriHandler.openUri(info.url) }; onLater() }) {
-                Text("Update", color = ColorPrimary, fontWeight = FontWeight.SemiBold)
-            }
-        },
-        dismissButton = { TextButton(onClick = onLater) { Text("Later", color = ColorTextSecondary) } },
-    )
 }

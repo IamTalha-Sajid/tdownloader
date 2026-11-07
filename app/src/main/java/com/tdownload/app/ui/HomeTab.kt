@@ -17,7 +17,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -33,6 +35,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -44,6 +47,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tdownload.app.*
+import com.tdownload.app.ui.components.TDownloaderLoader
 import com.tdownload.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -184,6 +188,7 @@ fun HomeTab(
             }
         } else if (text.isBlank()) {
             item { SupportedPlatforms() }
+            if (downloads.isEmpty() && recent.isEmpty()) item { HowItWorks() }
         }
 
         if (downloads.isNotEmpty()) {
@@ -226,20 +231,28 @@ private fun Header(initState: String) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(
-            buildAnnotatedString {
-                withStyle(SpanStyle(color = ColorPrimary)) { append("T") }
-                withStyle(SpanStyle(color = ColorTextPrimary)) { append("Downloader") }
-            },
-            fontSize = 26.sp,
-            fontWeight = FontWeight.Bold,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(
+                painterResource(com.tdownload.app.R.drawable.ic_stat_tdownloader),
+                contentDescription = null,
+                tint = ColorPrimary,
+                modifier = Modifier.size(32.dp),
+            )
+            Text(
+                buildAnnotatedString {
+                    withStyle(SpanStyle(color = ColorPrimary)) { append("T") }
+                    withStyle(SpanStyle(color = ColorTextPrimary)) { append("Downloader") }
+                },
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (initState == "Ready") {
                 Box(Modifier.size(8.dp).clip(CircleShape).background(ColorSuccess))
                 Text("Ready", fontSize = 12.sp, color = ColorTextTertiary)
             } else {
-                CircularProgressIndicator(Modifier.size(10.dp), strokeWidth = 2.dp, color = ColorPrimary)
+                TDownloaderLoader(size = 14.dp)
                 Text(initState, fontSize = 12.sp, color = ColorTextTertiary)
             }
         }
@@ -259,6 +272,36 @@ private fun SupportedPlatforms() {
         // out: this row is about pasting links, and statuses have none (they live in the Status tab).
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Site.entries.filter { it != Site.WhatsApp }.forEach { PlatformIcon(it) }
+        }
+    }
+}
+
+@Composable
+private fun HowItWorks() {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SectionTitle("How it works")
+        SurfaceCard {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                HowItWorksStep(Icons.Filled.ContentCopy, "Copy a link", "From Instagram, TikTok, YouTube, X or Facebook")
+                HowItWorksStep(Icons.Filled.ContentPaste, "Paste it here", "Or share it straight to TDownloader")
+                HowItWorksStep(Icons.Filled.Download, "Download", "Pick video or audio and save it to your phone")
+            }
+        }
+    }
+}
+
+@Composable
+private fun HowItWorksStep(icon: ImageVector, title: String, subtitle: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(
+            modifier = Modifier.size(40.dp).clip(CircleShape).background(ColorSurfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = ColorPrimary, modifier = Modifier.size(20.dp))
+        }
+        Column {
+            Text(title, color = ColorTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, color = ColorTextTertiary, fontSize = 12.sp)
         }
     }
 }
@@ -305,7 +348,7 @@ private fun ActionCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = ColorPrimary)
+                    TDownloaderLoader(size = 20.dp)
                     Text("Reading post…", color = ColorTextTertiary, fontSize = 13.sp)
                 }
                 is Preview.Ready -> PostPreview(preview.post, selected)

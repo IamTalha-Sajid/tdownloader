@@ -51,6 +51,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import com.tdownload.app.WhatsAppStatuses
 import com.tdownload.app.WhatsAppStatuses.Source
 import com.tdownload.app.WhatsAppStatuses.Status
+import com.tdownload.app.ui.components.TDownloaderLoader
 import com.tdownload.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -119,7 +120,7 @@ fun StatusTab(modifier: Modifier, resumeTick: Int, onOpenViewer: (StatusViewerRe
             selected.clear()
             Toast.makeText(
                 context,
-                result.fold({ "Downloaded $it — find ${if (it == 1) "it" else "them"} in your Library" }, { "Couldn't download: ${it.message ?: "unknown error"}" }),
+                result.fold({ "Downloaded $it — find ${if (it == 1) "it" else "them"} in your Downloads" }, { "Couldn't download: ${it.message ?: "unknown error"}" }),
                 Toast.LENGTH_SHORT,
             ).show()
         }
@@ -185,7 +186,7 @@ fun StatusTab(modifier: Modifier, resumeTick: Int, onOpenViewer: (StatusViewerRe
                 }
                 when {
                     statuses == null -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = ColorPrimary, modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
+                        TDownloaderLoader(size = 40.dp)
                     }
                     shown.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth()) {
                         StatusMessage(
@@ -432,7 +433,7 @@ fun StatusViewerOverlay(request: StatusViewerRequest, onClose: () -> Unit) {
                     Text(if (saved) "Downloaded" else "Download", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
                 if (saved) {
-                    Text("Saved to Downloads/TDownload and your Library", color = ColorTextTertiary, fontSize = 12.sp)
+                    Text("Saved to Downloads/TDownload", color = ColorTextTertiary, fontSize = 12.sp)
                 }
             }
         }

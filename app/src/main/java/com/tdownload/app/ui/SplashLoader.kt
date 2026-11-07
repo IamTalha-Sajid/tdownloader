@@ -7,9 +7,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,8 +18,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tdownload.app.ui.components.TDownloaderLoader
 import com.tdownload.app.ui.theme.ColorBackground
-import com.tdownload.app.ui.theme.ColorOnPrimary
 import com.tdownload.app.ui.theme.ColorPrimary
 import com.tdownload.app.ui.theme.ColorTextPrimary
 import com.tdownload.app.ui.theme.ColorTextTertiary
@@ -47,7 +44,7 @@ fun SplashLoader(statusText: String, visible: Boolean) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(24.dp),
             ) {
-                BouncingArrow()
+                TDownloaderLoader(size = 72.dp)
 
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -122,36 +119,6 @@ private fun PulsingRings() {
                 .size(120.dp)
                 .scale(scale2)
                 .background(ColorPrimary.copy(alpha = alpha2), CircleShape)
-        )
-    }
-}
-
-@Composable
-private fun BouncingArrow() {
-    val infiniteTransition = rememberInfiniteTransition(label = "arrow")
-
-    val offsetY by infiniteTransition.animateFloat(
-        initialValue = -8f,
-        targetValue = 8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(700, easing = EaseInOutSine),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "arrow_y",
-    )
-
-    Box(
-        modifier = Modifier
-            .size(72.dp)
-            .offset(y = offsetY.dp)
-            .background(ColorPrimary, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = Icons.Filled.ArrowDownward,
-            contentDescription = null,
-            tint = ColorOnPrimary,
-            modifier = Modifier.size(36.dp),
         )
     }
 }

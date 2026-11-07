@@ -1,3 +1,28 @@
+# 🚀 TDownloader v1.4.0
+
+This release gives TDownloader a new look — new logo, app icon, notification icon and loader — fixes TikTok short links, and makes sure outdated versions are always updated.
+
+---
+
+## ✨ What's New
+
+### 🎨 New Look
+*   **New Logo & App Icon:** A fresh yellow arrow-into-tray mark replaces the old arrow, on the launcher icon, the splash screen and the Home header.
+*   **New Loader:** A new animated loader replaces the old spinners on the splash screen, while reading a post, and while loading WhatsApp statuses.
+*   **Notification Icon:** Download notifications now use the TDownloader icon, and it shows in the status bar while a download runs or after it finishes.
+*   **Downloads Tab:** The **Library** tab is now **Downloads**, with the TDownloader icon.
+*   **How It Works:** The empty Home screen now shows three quick steps — copy a link, paste it, download — until you have downloaded something.
+
+### 🔒 Updates
+*   **Outdated Versions Are Blocked:** If a newer version exists, older versions show a full-screen **Update required** screen with an **Update now** button that opens the latest release. The optional "Update available" prompt with **Later** is gone.
+
+### 🐛 Bug Fixes
+*   **TikTok Short Links:** `vt.tiktok.com` and `vm.tiktok.com` links failed with "Couldn't fetch this TikTok video". They now download.
+*   **Missing Notifications:** The app now asks for notification permission when opened (it only asked from the share sheet before), so download and failure notifications show up for in-app downloads too.
+*   **Failure Notifications:** A download that failed in an unexpected way could end without any "Failed" notification. It now always reports the failure.
+
+---
+
 # 🚀 TDownloader v1.3.0
 
 This release removes every login, replaces the per-site tabs with one smart home screen, and adds TikTok, X (Twitter), Facebook, and WhatsApp Status downloads.

@@ -25,7 +25,9 @@ object TikTokFetcher {
         // Short links (vm./vt.tiktok.com, tiktok.com/t/…) redirect to the canonical video URL.
         val pageUrl = if (idOf(url) != null) url else DirectHttp.finalUrl(url, pageHeaders)
         val id = idOf(pageUrl) ?: return null
-        val page = DirectHttp.get(pageUrl, pageHeaders)
+        // Short links redirect to a URL carrying tracking params (?_r=1&_t=…); with them TikTok serves a
+        // page that lacks the embedded post data, so fetch the bare canonical URL.
+        val page = DirectHttp.get(pageUrl.substringBefore('?'), pageHeaders)
         parse(id, page.body, page.cookies)
     }.getOrNull()
 

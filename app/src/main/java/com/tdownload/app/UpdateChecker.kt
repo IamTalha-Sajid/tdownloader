@@ -13,7 +13,6 @@ object UpdateChecker {
     private const val INFO_URL = "https://raw.githubusercontent.com/IamTalha-Sajid/tdownloader/main/update.json"
     private const val PREFS = "update_check"
     private const val KEY_INFO = "info"
-    private const val KEY_DISMISSED = "dismissed_latest"
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -34,11 +33,4 @@ object UpdateChecker {
 
     /** Downloads must be refused while this is true. */
     fun isBlocked(context: Context): Boolean = cachedStatus(context) is UpdateStatus.Required
-
-    fun dismissedLatest(context: Context): String? = prefs(context).getString(KEY_DISMISSED, null)
-
-    /** "Later" on the optional prompt: don't ask again until an even newer version is announced. */
-    fun dismiss(context: Context, latest: String) {
-        prefs(context).edit().putString(KEY_DISMISSED, latest).apply()
-    }
 }
