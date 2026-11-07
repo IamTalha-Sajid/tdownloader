@@ -38,7 +38,11 @@ Paste or share a link from any app → TDownloader recognises the site → downl
 
 ## Screenshots
 
-> Coming soon
+<p align="center">
+  <img src="screenshots/home.png" width="30%" alt="Home screen" />
+  <img src="screenshots/preview.png" width="30%" alt="Link preview" />
+  <img src="screenshots/downloads.png" width="30%" alt="Downloads" />
+</p>
 
 <br>
 
